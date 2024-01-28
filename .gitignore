@@ -1,0 +1,15 @@
+*
+
+!afm
+!afm/**
+!energy
+!energy/**
+!plots
+!plots/*.plt
+!verification
+!verification/**
+!.gitignore
+!deps
+!deps/**
+!.gitmodules
+!CMakeLists.txt
