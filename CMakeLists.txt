@@ -7,9 +7,9 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra -O3 -march=native -flto=auto ${CMAKE_CXX_FLAG
 
 find_package(TBB REQUIRED)
 
-include_directories(deps/eigen)
-include_directories(deps/libtimestep/include)
-include_directories(deps/libgran/include)
+include_directories(SYSTEM deps/eigen)
+include_directories(SYSTEM deps/libtimestep/include)
+include_directories(SYSTEM deps/libgran/include)
 
 set(UTILITY_SOURCES energy/compute_energy.cpp writer/writer.cpp)
 

@@ -114,7 +114,12 @@ int main() {
         return ke / am_max;
     });
 
-    std::ofstream ofs("../plots/04_particles_colliding.dat");
+    std::ofstream ofs("../plots/verification/04_particles_colliding.dat");
+
+    if (!ofs.good()) {
+        std::cerr << "Unable to create a data file" << std::endl;
+        return EXIT_FAILURE;
+    }
 
     ofs << "t\tE_trs\tE_rot\tp\tl\n";
     for (size_t i = 0; i < t_span.size(); i ++) {

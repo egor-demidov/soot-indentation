@@ -103,7 +103,12 @@ int main() {
             2.0*pow(r_part, 2.0)/pow(2.0*r_part+separation0, 2.0) +
             log((4.0*r_part+separation0)*separation0/pow(2.0*r_part+separation0, 2.0)));
 
-    std::ofstream ofs("../plots/05_hamaker.dat");
+    std::ofstream ofs("../plots/verification/05_hamaker.dat");
+
+    if (!ofs.good()) {
+        std::cerr << "Unable to create a data file" << std::endl;
+        return EXIT_FAILURE;
+    }
 
     ofs << "D\tKE\tU\n";
 
