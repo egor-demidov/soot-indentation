@@ -11,7 +11,6 @@
 
 #include <libgran/contact_force/contact_force.h>
 #include <libgran/granular_system/granular_system.h>
-#include <libgran/no_unary_force/no_unary_force.h>
 #include <libgran/sinter_bridge/sinter_bridge.h>
 
 #include "../writer/writer.h"
@@ -27,6 +26,12 @@ Eigen::Vector3d generate_random_unit_vector() {
     return vec.normalized();
 }
 
+// "Assemble" the force models used in this simulation
+using sinter_functor_t = sinter_functor<Eigen::Vector3d, double>; // Contact force
+using binary_force_container_t = binary_force_functor_container<Eigen::Vector3d, double, sinter_functor_t>; // Binary force container
+
+using unary_force_container_t = unary_force_functor_container<Eigen::Vector3d, double>; // Unary force container (empty)
+
 // We will be using a custom step handler in this simulation - sinter_step_handler
 // which has three template arguments: field_container_t, field_value_t, and real_t
 // but granular_system expects the step handler to have only two template arguments:
@@ -34,6 +39,9 @@ Eigen::Vector3d generate_random_unit_vector() {
 // Therefore, we need to create an alias where real_t is specialized
 template <typename field_container_t, typename field_value_t>
 using sinter_step_handler_double = sinter_step_handler<field_container_t, field_value_t, double>;
+
+using granular_system_t = granular_system<Eigen::Vector3d, double, rotational_velocity_verlet_half,
+        sinter_step_handler_double, binary_force_container_t, unary_force_container_t>; // Granular system representation
 
 int main() {
     // General simulation parameters
@@ -50,8 +58,9 @@ int main() {
     const double inertia = 2.0 / 5.0 * mass * pow(r_part, 2.0);
 
     // Parameters for the contact model
-    const double k = 10000.0;
-    const double gamma_n = 0.0;
+    const double k = 0.01;
+    const double gamma_d = 2.0 / 5.0 * sqrt(mass * k);
+    const double gamma_n = 5.0e-9;
     const double mu = 1.0;
     const double phi = 1.0;
     const double mu_o = 0.1;
@@ -65,9 +74,9 @@ int main() {
     x0.emplace_back(0, 2.0*r_part, 0);
     x0.emplace_back(2.0*r_part, 2.0*r_part, 0);
 
-    v0.emplace_back(1, 0, 0);
+    v0.emplace_back(0, 1, 0);
     v0.emplace_back(0, 0, 0);
-    v0.emplace_back(0, 0, 0);
+    v0.emplace_back(0, -1, 0);
 
     // Initialize the remaining buffers
     theta0.resize(x0.size());
@@ -75,16 +84,13 @@ int main() {
     std::fill(theta0.begin(), theta0.end(), Eigen::Vector3d::Zero());
     std::fill(omega0.begin(), omega0.end(), Eigen::Vector3d::Zero());
 
-    sinter_functor<Eigen::Vector3d, double> sinter_model(x0.size(), k, gamma_n, k, gamma_n, k, gamma_t, mu, phi, k, gamma_r, mu_o, phi, k, gamma_o, mu_o, phi,
+    sinter_functor_t sinter_model(x0.size(), k, gamma_d, k, gamma_n, k, gamma_t, mu, phi, k, gamma_r, mu_o, phi, k, gamma_o, mu_o, phi,
                                                          r_part, mass, inertia, dt, Eigen::Vector3d::Zero(), 0.0, x0.begin(), generate_random_unit_vector, 1.0e-9);
 
-    binary_force_functor_container<Eigen::Vector3d, double, sinter_functor<Eigen::Vector3d, double>>
+    binary_force_container_t
             binary_force_functors{sinter_model};
 
-    no_unary_force_functor<Eigen::Vector3d, double> no_unary_force(Eigen::Vector3d::Zero());
-
-    unary_force_functor_container<Eigen::Vector3d, double, no_unary_force_functor<Eigen::Vector3d, double>>
-            unary_force_functors(no_unary_force);
+    unary_force_container_t unary_force_functors;
 
     // We need to use a custom step handler with the sintering model
     // Get the custom step handler instance from the sinter model
@@ -93,12 +99,10 @@ int main() {
     // Create an instance of granular_system using the contact force model
     // Using velocity Verlet integrator for rotational systems and a default
     // step handler for rotational systems
-    granular_system<Eigen::Vector3d, double, rotational_velocity_verlet_half,
-            sinter_step_handler_double, binary_force_functor_container<Eigen::Vector3d, double, sinter_functor<Eigen::Vector3d, double>>,
-            unary_force_functor_container<Eigen::Vector3d, double, no_unary_force_functor<Eigen::Vector3d, double>>> system(x0,
-                                                                                                                            v0, theta0, omega0, 0.0, Eigen::Vector3d::Zero(),
-                                                                                                                            0.0, step_handler_instance,
-                                                                                                                            binary_force_functors, unary_force_functors);
+    granular_system_t system(x0,
+                                                                        v0, theta0, omega0, 0.0, Eigen::Vector3d::Zero(),
+                                                                        0.0, step_handler_instance,
+                                                                        binary_force_functors, unary_force_functors);
 
     for (size_t n = 0; n < n_steps; n ++) {
         if (n % dump_period == 0) {

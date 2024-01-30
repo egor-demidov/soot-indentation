@@ -11,15 +11,24 @@
 
 #include <libgran/contact_force/contact_force.h>
 #include <libgran/hamaker_force/hamaker_force.h>
-#include <libgran/no_unary_force/no_unary_force.h>
 #include <libgran/granular_system/granular_system.h>
 
 #include "../energy/compute_energy.h"
 #include "../afm/afm_step_handler.h"
 #include "../writer/writer.h"
 
+// "Assemble" the force models used in this simulation
+using contact_force_functor_t = contact_force_functor<Eigen::Vector3d, double>; // Contact force
+using vdw_force_dunctor_t = hamaker_functor<Eigen::Vector3d, double>; // Van der Waals force
+using binary_force_container_t = binary_force_functor_container<Eigen::Vector3d, double, contact_force_functor_t, vdw_force_dunctor_t>; // Binary force container
+
+using unary_force_container_t = unary_force_functor_container<Eigen::Vector3d, double>; // Unary force container (empty)
+
 template <typename field_container_t, typename field_value_t>
 using afm_rotational_step_handler = afm_step_handler<field_container_t, field_value_t, rotational_step_handler>;
+
+using granular_system_t = granular_system<Eigen::Vector3d, double, rotational_velocity_verlet_half,
+        afm_rotational_step_handler, binary_force_container_t, unary_force_container_t>; // Granular system representation
 
 int main() {
     // General simulation parameters
@@ -70,29 +79,25 @@ int main() {
 
     // Create an instance of contact force model
     // Using field type Eigen::Vector3d with real type double
-    contact_force_functor<Eigen::Vector3d, double> contact_force_model(x0.size(),
-                                                                       k, gamma_n, k, gamma_t, mu, phi, k, gamma_r, mu_o, phi, k, gamma_o, mu_o, phi,
-                                                                       r_part, mass, inertia, dt, Eigen::Vector3d::Zero(), 0.0);
+    contact_force_functor_t contact_force_model(x0.size(),
+                                       k, gamma_n, k, gamma_t, mu, phi, k, gamma_r, mu_o, phi, k, gamma_o, mu_o, phi,
+                                       r_part, mass, inertia, dt, Eigen::Vector3d::Zero(), 0.0);
 
     // Create an instance of Hamaker model
-    hamaker_functor<Eigen::Vector3d, double> hamaker_model(A, h0,
+    vdw_force_dunctor_t hamaker_model(A, h0,
                                                            r_part, mass, Eigen::Vector3d::Zero(), 0.0);
 
-    binary_force_functor_container<Eigen::Vector3d, double, contact_force_functor<Eigen::Vector3d, double>, hamaker_functor<Eigen::Vector3d, double>>
+    binary_force_container_t
             binary_force_functors{contact_force_model, hamaker_model};
 
-    no_unary_force_functor<Eigen::Vector3d, double> no_unary_force(Eigen::Vector3d::Zero());
-
-    unary_force_functor_container<Eigen::Vector3d, double, no_unary_force_functor<Eigen::Vector3d, double>>
-            unary_force_functors(no_unary_force);
+    unary_force_container_t
+            unary_force_functors;
 
     // Create an instance of granular_system using the contact force model
     // Using velocity Verlet integrator for rotational systems and a default
     // step handler for rotational systems
-    granular_system<Eigen::Vector3d, double, rotational_velocity_verlet_half,
-            afm_rotational_step_handler, binary_force_functor_container<Eigen::Vector3d, double, contact_force_functor<Eigen::Vector3d, double>, hamaker_functor<Eigen::Vector3d, double>>,
-            unary_force_functor_container<Eigen::Vector3d, double, no_unary_force_functor<Eigen::Vector3d, double>>> system(x0,
-                                                                                                v0, theta0, omega0, 0.0, Eigen::Vector3d::Zero(), 0.0, custom_handler_instance, binary_force_functors, unary_force_functors);
+    granular_system_t system(x0,
+                    v0, theta0, omega0, 0.0, Eigen::Vector3d::Zero(), 0.0, custom_handler_instance, binary_force_functors, unary_force_functors);
 
     std::vector<double> separation_span, t_span, ke_trs_span, ke_rot_span, ke_tot_span, lm_span, am_span;
 

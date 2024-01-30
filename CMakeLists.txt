@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.26)
+cmake_minimum_required(VERSION 3.22)
 project(soot_indentation)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -18,11 +18,13 @@ add_executable(02_particles_colliding verification/02_particles_colliding.cpp ${
 add_executable(03_particles_colliding verification/03_particles_colliding.cpp ${UTILITY_SOURCES})
 add_executable(04_particles_colliding verification/04_particles_colliding.cpp ${UTILITY_SOURCES})
 add_executable(05_hamaker verification/05_hamaker.cpp ${UTILITY_SOURCES})
-add_executable(06_sintering verification/06_sintering.cpp ${UTILITY_SOURCES})
+add_executable(06_hamaker verification/06_hamaker.cpp ${UTILITY_SOURCES})
+add_executable(07_sintering verification/07_sintering.cpp ${UTILITY_SOURCES})
 
 target_link_libraries(01_particles_colliding TBB::tbb)
 target_link_libraries(02_particles_colliding TBB::tbb)
 target_link_libraries(03_particles_colliding TBB::tbb)
 target_link_libraries(04_particles_colliding TBB::tbb)
 target_link_libraries(05_hamaker TBB::tbb)
-target_link_libraries(06_sintering TBB::tbb)
+target_link_libraries(06_hamaker TBB::tbb)
+target_link_libraries(07_sintering TBB::tbb)
