@@ -10,6 +10,7 @@ set xlabel 'E, J'
 set ylabel 'E, J'
 set size square 0.5, 0.5
 set xtics 2.5e-21
+set ytics 2.5e-21
 set yrange [0:7.5e-21]
 set xrange [0:7.5e-21]
 

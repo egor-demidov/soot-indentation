@@ -1,37 +1,53 @@
 //
-// Created by egor on 1/30/24.
+// Created by egor on 1/28/24.
 //
 
-#include <vector>
 #include <iostream>
-#include <cmath>
-#include <fstream>
+#include <vector>
+#include <chrono>
+#include <random>
 
-// Using Eigen for linear algebra
 #include <Eigen/Eigen>
 
 #include <libgran/contact_force/contact_force.h>
-#include <libgran/hamaker_force/hamaker_force.h>
 #include <libgran/granular_system/granular_system.h>
+#include <libgran/sinter_bridge/sinter_bridge.h>
 
+#include "../writer/writer.h"
 #include "../energy/compute_energy.h"
-#include "../writer.h"
+
+std::mt19937_64 mt(0);
+std::uniform_real_distribution<double> dist(-1.0, 1.0);
+
+Eigen::Vector3d generate_random_unit_vector() {
+    Eigen::Vector3d vec;
+    do {
+        vec = {dist(mt), dist(mt), dist(mt)};
+    } while (vec.norm() == 0);
+    return vec.normalized();
+}
 
 // "Assemble" the force models used in this simulation
-using contact_force_functor_t = contact_force_functor<Eigen::Vector3d, double>; // Contact force
-using vdw_force_dunctor_t = hamaker_functor<Eigen::Vector3d, double>; // Van der Waals force
-using binary_force_container_t
-    = binary_force_functor_container<Eigen::Vector3d, double, contact_force_functor_t, vdw_force_dunctor_t>; // Binary force container
+using sinter_functor_t = sinter_functor<Eigen::Vector3d, double>; // Contact force
+using binary_force_container_t = binary_force_functor_container<Eigen::Vector3d, double, sinter_functor_t>; // Binary force container
 
 using unary_force_container_t = unary_force_functor_container<Eigen::Vector3d, double>; // Unary force container (empty)
 
+// We will be using a custom step handler in this simulation - sinter_step_handler
+// which has three template arguments: field_container_t, field_value_t, and real_t
+// but granular_system expects the step handler to have only two template arguments:
+// field_container_t and field_value_t
+// Therefore, we need to create an alias where real_t is specialized
+template <typename field_container_t, typename field_value_t>
+using sinter_step_handler_double = sinter_step_handler<field_container_t, field_value_t, double>;
+
 using granular_system_t = granular_system<Eigen::Vector3d, double, rotational_velocity_verlet_half,
-    rotational_step_handler, binary_force_container_t, unary_force_container_t>; // Granular system representation
+        sinter_step_handler_double, binary_force_container_t, unary_force_container_t>; // Granular system representation
 
 int main() {
     // General simulation parameters
     const double dt = 1e-13;
-    const double t_tot = 5.0e-9;
+    const double t_tot = 1.0e-7;
     const auto n_steps = size_t(t_tot / dt);
     const size_t n_dumps = 300;
     const size_t dump_period = n_steps / n_dumps;
@@ -46,6 +62,7 @@ int main() {
 
     // Parameters for the contact model
     const double k = 10000.0;
+    const double gamma_d = 0.0;
     const double gamma_n = 5.0e-9;
     const double mu = 1.0;
     const double phi = 1.0;
@@ -54,50 +71,15 @@ int main() {
     const double gamma_r = 0.05 * gamma_n;
     const double gamma_o = 0.05 * gamma_n;
 
-    // Parameters for the Van der Waals model
-    const double A = 1.0e-20;
-    const double h0 = 1.0e-9;
-
     // Initialize the particles
     std::vector<Eigen::Vector3d> x0, v0, theta0, omega0;
-    // A sphere
-    const double r_sphere = 12.0 * r_part;
-    const Eigen::Vector3d sphere_1_center = Eigen::Vector3d::Zero();
-    const Eigen::Vector3d sphere_2_center = Eigen::Vector3d::Zero() + 2.03 * Eigen::Vector3d::UnitX() * r_sphere;
+    x0.emplace_back(0, 0, 0);
+    x0.emplace_back(0, 2.0*r_part, 0);
+    x0.emplace_back(2.0*r_part, 2.0*r_part, 0);
 
-    const auto max_num_parts_per_dim = size_t(2.0 * r_sphere / r_part);
-
-    // Create sphere 1
-    for (size_t i = 0; i < max_num_parts_per_dim; i ++) {
-        double x = sphere_1_center[0] - r_sphere + r_part + 2.0 * r_part * double(i);
-        for (size_t j = 0; j < max_num_parts_per_dim; j ++) {
-            double y = sphere_1_center[1] - r_sphere + r_part + 2.0 * r_part * double(j);
-            for (size_t m = 0; m < max_num_parts_per_dim; m ++) {
-                double z = sphere_1_center[2] - r_sphere + r_part + 2.0 * r_part * double(m);
-                if ((Eigen::Vector3d{x, y, z} - sphere_1_center).norm() < r_sphere) {
-                    x0.emplace_back(x, y, z);
-                    v0.emplace_back(2, 0, 0);
-                }
-            }
-        }
-    }
-
-    // Create sphere 2
-    for (size_t i = 0; i < max_num_parts_per_dim; i ++) {
-        double x = sphere_2_center[0] - r_sphere + r_part + 2.0 * r_part * double(i);
-        for (size_t j = 0; j < max_num_parts_per_dim; j ++) {
-            double y = sphere_2_center[1] - r_sphere + r_part + 2.0 * r_part * double(j);
-            for (size_t m = 0; m < max_num_parts_per_dim; m ++) {
-                double z = sphere_2_center[2] - r_sphere + r_part + 2.0 * r_part * double(m);
-                if ((Eigen::Vector3d{x, y, z} - sphere_2_center).norm() < r_sphere) {
-                    x0.emplace_back(x, y, z);
-                    v0.emplace_back(-2, 0, 0);
-                }
-            }
-        }
-    }
-
-    std::cout << "Number of particles: " << x0.size() << std::endl;
+    v0.emplace_back(1, 0, 0);
+    v0.emplace_back(0, 0, 0);
+    v0.emplace_back(0, 1, 0);
 
     // Initialize the remaining buffers
     theta0.resize(x0.size());
@@ -105,34 +87,25 @@ int main() {
     std::fill(theta0.begin(), theta0.end(), Eigen::Vector3d::Zero());
     std::fill(omega0.begin(), omega0.end(), Eigen::Vector3d::Zero());
 
-    // Set the initial velocity of the above-plane particle
-
-    // Create an instance of step_handler
-    // Using field type Eigen::Vector3d with container std::vector
-    rotational_step_handler<std::vector<Eigen::Vector3d>, Eigen::Vector3d> step_handler_instance;
-
-    // Create an instance of contact force model
-    // Using field type Eigen::Vector3d with real type double
-    contact_force_functor_t contact_force_model(x0.size(),
-                                       k, gamma_n, k, gamma_t, mu, phi, k, gamma_r, mu_o, phi, k, gamma_o, mu_o, phi,
-                                       r_part, mass, inertia, dt, Eigen::Vector3d::Zero(), 0.0);
-
-    // Create an instance of Hamaker model
-    vdw_force_dunctor_t hamaker_model(A, h0,
-                       r_part, mass, Eigen::Vector3d::Zero(), 0.0);
+    sinter_functor_t sinter_model(x0.size(), k, gamma_d, k, gamma_n, k, gamma_t, mu, phi, k, gamma_r, mu_o, phi, k, gamma_o, mu_o, phi,
+                                                         r_part, mass, inertia, dt, Eigen::Vector3d::Zero(), 0.0, x0.begin(), generate_random_unit_vector, 1.0e-9);
 
     binary_force_container_t
-            binary_force_functors{contact_force_model, hamaker_model};
+            binary_force_functors{sinter_model};
 
-    unary_force_container_t
-            unary_force_functors;
+    unary_force_container_t unary_force_functors;
+
+    // We need to use a custom step handler with the sintering model
+    // Get the custom step handler instance from the sinter model
+    auto step_handler_instance = sinter_model.get_step_handler<std::vector<Eigen::Vector3d>>();
 
     // Create an instance of granular_system using the contact force model
     // Using velocity Verlet integrator for rotational systems and a default
     // step handler for rotational systems
     granular_system_t system(x0,
-                           v0, theta0, omega0, 0.0, Eigen::Vector3d::Zero(), 0.0,
-                           step_handler_instance, binary_force_functors, unary_force_functors);
+                v0, theta0, omega0, 0.0, Eigen::Vector3d::Zero(),
+                0.0, step_handler_instance,
+                binary_force_functors, unary_force_functors);
 
     // Buffers for thermo data
     std::vector<double> t_span, ke_trs_span, ke_rot_span, ke_tot_span, lm_span, am_span, lm_span_norm, am_span_norm;
@@ -159,7 +132,7 @@ int main() {
     }
 
     // Output stream for data
-    std::ofstream ofs("../plots/verification/06_hamaker.dat");
+    std::ofstream ofs("../plots/verification/09_sintering.dat");
 
     if (!ofs.good()) {
         std::cerr << "Unable to create a data file" << std::endl;
@@ -201,6 +174,5 @@ int main() {
             << lm_span_norm[i] << "\t"
             << am_span_norm[i] << "\n";
     }
-
     return 0;
 }
