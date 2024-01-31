@@ -5,7 +5,7 @@
 !energy
 !energy/**
 !plots
-!plots/*.plt
+!plots/verification/*.plt
 !verification
 !verification/**
 !.gitignore
@@ -13,3 +13,5 @@
 !deps/**
 !.gitmodules
 !CMakeLists.txt
+!writer
+!writer/**
