@@ -46,7 +46,7 @@ plot "07_sintering.dat" using 1:2 with lines ls 1,\
 set label 1 'b' @POS
 plot "08_sintering.dat" using 1:2 with lines ls 1 title "E_{trs}",\
     "08_sintering.dat" using 1:3 with lines ls 2 title "E_{rot}",\
-    "08_sintering.dat" using 1:7 with lines ls 3 title "P";
+    "08_sintering.dat" using 1:7 with lines ls 3 title "P/L";
 # --- GRAPH c
 @BMARGIN; @LMARGIN; @XTICS; @YTICS; @NOKEY
 set label 1 'c' @POS
