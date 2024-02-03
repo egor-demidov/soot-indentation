@@ -23,7 +23,7 @@ NOXTICS = "set xtics format ''; unset xlabel"
 XTICS = "set xtics rotate by 45 right format '%.0sx10^{%01S}'; set xlabel 't, s'"
 NOYTICS = "set format y ''; unset ylabel"
 YTICS = "set format y '%.1f'; set ylabel 'u_{norm}'"
-KEY = "set key at graph 0.92, 0.75"
+KEY = "set key at graph 0.92, 0.55"
 NOKEY = "unset key"
 # Margins for each row resp. column
 TMARGIN = "set tmargin at screen 0.95; set bmargin at screen 0.55"

@@ -11,42 +11,23 @@
 
 #include <libgran/contact_force/contact_force.h>
 #include <libgran/granular_system/granular_system.h>
-#include <libgran/sinter_bridge/sinter_bridge.h>
+#include <libgran/sinter_bridge/alt_sinter_bridge.h>
 
 #include "../writer/writer.h"
 #include "../energy/compute_energy.h"
 
-std::mt19937_64 mt(0);
-std::uniform_real_distribution<double> dist(-1.0, 1.0);
-
-Eigen::Vector3d generate_random_unit_vector() {
-    Eigen::Vector3d vec;
-    do {
-        vec = {dist(mt), dist(mt), dist(mt)};
-    } while (vec.norm() == 0);
-    return vec.normalized();
-}
-
 // "Assemble" the force models used in this simulation
-using sinter_functor_t = sinter_functor<Eigen::Vector3d, double>; // Contact force
+using sinter_functor_t = alt_sinter_functor<Eigen::Vector3d, double>; // Contact force
 using binary_force_container_t = binary_force_functor_container<Eigen::Vector3d, double, sinter_functor_t>; // Binary force container
 
 using unary_force_container_t = unary_force_functor_container<Eigen::Vector3d, double>; // Unary force container (empty)
 
-// We will be using a custom step handler in this simulation - sinter_step_handler
-// which has three template arguments: field_container_t, field_value_t, and real_t
-// but granular_system expects the step handler to have only two template arguments:
-// field_container_t and field_value_t
-// Therefore, we need to create an alias where real_t is specialized
-template <typename field_container_t, typename field_value_t>
-using sinter_step_handler_double = sinter_step_handler<field_container_t, field_value_t, double>;
-
 using granular_system_t = granular_system<Eigen::Vector3d, double, rotational_velocity_verlet_half,
-        sinter_step_handler_double, binary_force_container_t, unary_force_container_t>; // Granular system representation
+        rotational_step_handler, binary_force_container_t, unary_force_container_t>; // Granular system representation
 
 int main() {
     // General simulation parameters
-    const double dt = 1e-13;
+    const double dt = 1e-14;
     const double t_tot = 1.0e-7;
     const auto n_steps = size_t(t_tot / dt);
     const size_t n_dumps = 300;
@@ -62,14 +43,14 @@ int main() {
 
     // Parameters for the contact model
     const double k = 0.01;
-    const double gamma_d = 1e-13;
-    const double gamma_n = 5.0e-9;
+    const double gamma_n = 2.0e-11;
     const double mu = 1.0;
     const double phi = 1.0;
     const double mu_o = 0.1;
     const double gamma_t = 0.2 * gamma_n;
     const double gamma_r = 0.05 * gamma_n;
     const double gamma_o = 0.05 * gamma_n;
+    const double d_crit = 1.0e-9;
 
     // Initialize the particles
     std::vector<Eigen::Vector3d> x0, v0, theta0, omega0;
@@ -87,25 +68,24 @@ int main() {
     std::fill(theta0.begin(), theta0.end(), Eigen::Vector3d::Zero());
     std::fill(omega0.begin(), omega0.end(), Eigen::Vector3d::Zero());
 
-    sinter_functor_t sinter_model(x0.size(), k, gamma_d, k, gamma_n, k, gamma_t, mu, phi, k, gamma_r, mu_o, phi, k, gamma_o, mu_o, phi,
-                                                         r_part, mass, inertia, dt, Eigen::Vector3d::Zero(), 0.0, x0.begin(), generate_random_unit_vector, 1.0e-9);
+    sinter_functor_t sinter_model(x0.size(), x0,
+                                  k, gamma_n, k, gamma_t, mu, phi, k, gamma_r, mu_o, phi, k, gamma_o, mu_o, phi,
+                                  r_part, mass, inertia, dt, Eigen::Vector3d::Zero(), 0.0, d_crit);
 
     binary_force_container_t
             binary_force_functors{sinter_model};
 
     unary_force_container_t unary_force_functors;
 
-    // We need to use a custom step handler with the sintering model
-    // Get the custom step handler instance from the sinter model
-    auto step_handler_instance = sinter_model.get_step_handler<std::vector<Eigen::Vector3d>>();
+    rotational_step_handler<std::vector<Eigen::Vector3d>, Eigen::Vector3d> step_handler_instance;
 
     // Create an instance of granular_system using the contact force model
     // Using velocity Verlet integrator for rotational systems and a default
     // step handler for rotational systems
     granular_system_t system(x0,
-                v0, theta0, omega0, 0.0, Eigen::Vector3d::Zero(),
-                0.0, step_handler_instance,
-                binary_force_functors, unary_force_functors);
+                             v0, theta0, omega0, 0.0, Eigen::Vector3d::Zero(),
+                             0.0, step_handler_instance,
+                             binary_force_functors, unary_force_functors);
 
     // Buffers for thermo data
     std::vector<double> t_span, ke_trs_span, ke_rot_span, ke_tot_span, lm_span, am_span, lm_span_norm, am_span_norm;
