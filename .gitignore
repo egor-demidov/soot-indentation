@@ -8,6 +8,10 @@
 !plots/verification/*.plt
 !verification
 !verification/**
+!production
+!production/**
+!reader
+!reader/**
 !.gitignore
 !deps
 !deps/**
@@ -15,3 +19,5 @@
 !CMakeLists.txt
 !writer
 !writer/**
+!aggregates
+!aggregates/**
