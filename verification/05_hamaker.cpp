@@ -14,7 +14,7 @@
 #include <libgran/granular_system/granular_system.h>
 
 #include "../energy/compute_energy.h"
-#include "../afm/afm_step_handler.h"
+#include "../fix/fixed_step_handler.h"
 #include "../writer/writer.h"
 
 // "Assemble" the force models used in this simulation
@@ -25,10 +25,10 @@ using binary_force_container_t = binary_force_functor_container<Eigen::Vector3d,
 using unary_force_container_t = unary_force_functor_container<Eigen::Vector3d, double>; // Unary force container (empty)
 
 template <typename field_container_t, typename field_value_t>
-using afm_rotational_step_handler = afm_step_handler<field_container_t, field_value_t, rotational_step_handler>;
+using fixed_rotational_step_handler = fixed_step_handler<field_container_t, field_value_t, rotational_step_handler>;
 
 using granular_system_t = granular_system<Eigen::Vector3d, double, rotational_velocity_verlet_half,
-        afm_rotational_step_handler, binary_force_container_t, unary_force_container_t>; // Granular system representation
+        fixed_rotational_step_handler, binary_force_container_t, unary_force_container_t>; // Granular system representation
 
 int main() {
     // General simulation parameters
@@ -75,7 +75,7 @@ int main() {
 
     // Fix the second particle in space
     std::vector<bool> fixed_particles = {false, true};
-    afm_rotational_step_handler<std::vector<Eigen::Vector3d>, Eigen::Vector3d> custom_handler_instance(fixed_particles, step_handler_instance);
+    fixed_rotational_step_handler<std::vector<Eigen::Vector3d>, Eigen::Vector3d> custom_handler_instance(fixed_particles, step_handler_instance);
 
     // Create an instance of contact force model
     // Using field type Eigen::Vector3d with real type double

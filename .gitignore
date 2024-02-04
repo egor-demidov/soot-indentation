@@ -21,3 +21,5 @@
 !writer/**
 !aggregates
 !aggregates/**
+!fix
+!fix/**

@@ -17,7 +17,8 @@
 #include "../energy/compute_energy.h"
 
 // "Assemble" the force models used in this simulation
-using sinter_functor_t = alt_sinter_functor<Eigen::Vector3d, double>; // Contact force
+using contact_functor_t = contact_force_functor<Eigen::Vector3d, double>; // Non-bonded contact force
+using sinter_functor_t = alt_sinter_functor<Eigen::Vector3d, double>; // Bonded contact force
 using binary_force_container_t = binary_force_functor_container<Eigen::Vector3d, double, sinter_functor_t>; // Binary force container
 
 using unary_force_container_t = unary_force_functor_container<Eigen::Vector3d, double>; // Unary force container (empty)
@@ -41,15 +42,22 @@ int main() {
     const double mass = 4.0 / 3.0 * M_PI * pow(r_part, 3.0) * rho;
     const double inertia = 2.0 / 5.0 * mass * pow(r_part, 2.0);
 
-    // Parameters for the contact model
-    const double k = 1000.0;
-    const double gamma_n = 1.25e-8;
+    // Parameters for the non-bonded contact model
+    const double k = 10000.0;
+    const double gamma_n = 5.0e-9;
     const double mu = 1.0;
     const double phi = 1.0;
     const double mu_o = 0.1;
     const double gamma_t = 0.2 * gamma_n;
     const double gamma_r = 0.05 * gamma_n;
     const double gamma_o = 0.05 * gamma_n;
+
+    // Parameters for the bonded contact model
+    const double k_bond = 1000.0;
+    const double gamma_n_bond = 1.25e-8;
+    const double gamma_t_bond = 0.2 * gamma_n_bond;
+    const double gamma_r_bond = 0.05 * gamma_n_bond;
+    const double gamma_o_bond = 0.05 * gamma_n_bond;
     const double d_crit = 1.0e-9;
 
     // Initialize the particles
@@ -68,9 +76,13 @@ int main() {
     std::fill(theta0.begin(), theta0.end(), Eigen::Vector3d::Zero());
     std::fill(omega0.begin(), omega0.end(), Eigen::Vector3d::Zero());
 
+    contact_functor_t contact_model(x0.size(),
+                                    k, gamma_n, k, gamma_t, mu, phi, k, gamma_r, mu_o, phi, k, gamma_o, mu_o, phi,
+                                    r_part, mass, inertia, dt, Eigen::Vector3d::Zero(), 0.0);
+
     sinter_functor_t sinter_model(x0.size(), x0,
-                                  k, gamma_n, k, gamma_t, mu, phi, k, gamma_r, mu_o, phi, k, gamma_o, mu_o, phi,
-                                  r_part, mass, inertia, dt, Eigen::Vector3d::Zero(), 0.0, d_crit);
+                                  k_bond, gamma_n_bond, k_bond, gamma_t_bond, k_bond, gamma_r_bond, k_bond, gamma_o_bond,
+                                  r_part, mass, inertia, dt, Eigen::Vector3d::Zero(), 0.0, d_crit, contact_model);
 
     binary_force_container_t
             binary_force_functors{sinter_model};
