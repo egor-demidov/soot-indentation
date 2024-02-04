@@ -7,11 +7,14 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra -O3 -march=native -flto=auto ${CMAKE_CXX_FLAG
 
 find_package(TBB REQUIRED)
 
-include_directories(SYSTEM deps/eigen)
-include_directories(SYSTEM deps/libtimestep/include)
-include_directories(SYSTEM deps/libgran/include)
+include_directories(SYSTEM deps/eigen)                  # Eigen, a linear algebra library
+include_directories(SYSTEM deps/libtimestep/include)    # module that implements second-order integrators
+include_directories(SYSTEM deps/libgran/include)        # module that implements DEM solvers and contact models
+include_directories(SYSTEM deps/cgal)                   # Computational Geometry Algorithms Library
 
-set(UTILITY_SOURCES energy/compute_energy.cpp writer/writer.cpp)
+set(UTILITY_SOURCES energy/compute_energy.cpp writer/writer.cpp reader/mackowski_reader.cpp)
+
+### VERIFICATION EXECUTABLES ###
 
 add_executable(01_particles_colliding verification/01_particles_colliding.cpp ${UTILITY_SOURCES})
 add_executable(02_particles_colliding verification/02_particles_colliding.cpp ${UTILITY_SOURCES})
@@ -34,3 +37,9 @@ target_link_libraries(07_sintering TBB::tbb)
 target_link_libraries(08_sintering TBB::tbb)
 target_link_libraries(09_sintering TBB::tbb)
 target_link_libraries(10_sintering TBB::tbb)
+
+### PRODUCTION EXECUTABLES ###
+
+add_executable(01_afm_aggregate production/01_afm_aggregate.cpp ${UTILITY_SOURCES})
+
+target_link_libraries(01_afm_aggregate TBB::tbb)
