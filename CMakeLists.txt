@@ -7,12 +7,19 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra -O3 -march=native -flto=auto ${CMAKE_CXX_FLAG
 
 find_package(TBB REQUIRED)
 
+set(CGAL_DIR "deps/cgal")
+set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE)
+find_package(CGAL REQUIRED)
+
 include_directories(SYSTEM deps/eigen)                  # Eigen, a linear algebra library
 include_directories(SYSTEM deps/libtimestep/include)    # module that implements second-order integrators
 include_directories(SYSTEM deps/libgran/include)        # module that implements DEM solvers and contact models
-include_directories(SYSTEM deps/cgal)                   # Computational Geometry Algorithms Library
+include_directories(SYSTEM ${CGAL_INCLUDE_DIRS})        # Computational Geometry Algorithms Library
+# CGAL dependencies: libmpfr-dev libgmp-dev
 
-set(UTILITY_SOURCES energy/compute_energy.cpp writer/writer.cpp reader/mackowski_reader.cpp)
+set(UTILITY_SOURCES energy/compute_energy.cpp writer/writer.cpp reader/mackowski_reader.cpp afm/anchor_plane.cpp)
+
+set(SHARED_OBJECTS TBB::tbb gmp mpfr)
 
 ### VERIFICATION EXECUTABLES ###
 
@@ -27,19 +34,19 @@ add_executable(08_sintering verification/08_sintering.cpp ${UTILITY_SOURCES})
 add_executable(09_sintering verification/09_sintering.cpp ${UTILITY_SOURCES})
 add_executable(10_sintering verification/10_sintering.cpp ${UTILITY_SOURCES})
 
-target_link_libraries(01_particles_colliding TBB::tbb)
-target_link_libraries(02_particles_colliding TBB::tbb)
-target_link_libraries(03_particles_colliding TBB::tbb)
-target_link_libraries(04_particles_colliding TBB::tbb)
-target_link_libraries(05_hamaker TBB::tbb)
-target_link_libraries(06_hamaker TBB::tbb)
-target_link_libraries(07_sintering TBB::tbb)
-target_link_libraries(08_sintering TBB::tbb)
-target_link_libraries(09_sintering TBB::tbb)
-target_link_libraries(10_sintering TBB::tbb)
+target_link_libraries(01_particles_colliding ${SHARED_OBJECTS})
+target_link_libraries(02_particles_colliding ${SHARED_OBJECTS})
+target_link_libraries(03_particles_colliding ${SHARED_OBJECTS})
+target_link_libraries(04_particles_colliding ${SHARED_OBJECTS})
+target_link_libraries(05_hamaker ${SHARED_OBJECTS})
+target_link_libraries(06_hamaker ${SHARED_OBJECTS})
+target_link_libraries(07_sintering ${SHARED_OBJECTS})
+target_link_libraries(08_sintering ${SHARED_OBJECTS})
+target_link_libraries(09_sintering ${SHARED_OBJECTS})
+target_link_libraries(10_sintering ${SHARED_OBJECTS})
 
 ### PRODUCTION EXECUTABLES ###
 
 add_executable(01_afm_aggregate production/01_afm_aggregate.cpp ${UTILITY_SOURCES})
 
-target_link_libraries(01_afm_aggregate TBB::tbb)
+target_link_libraries(01_afm_aggregate ${SHARED_OBJECTS})
