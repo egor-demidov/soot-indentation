@@ -6,6 +6,8 @@
 #include <iostream>
 #include <random>
 
+#include <cfenv>
+
 #include <Eigen/Eigen>
 
 #include <libgran/hamaker_force/hamaker_force.h>
@@ -35,10 +37,26 @@ using unary_functors_t = unary_force_functor_container<Eigen::Vector3d, double>;
 using granular_system_t = granular_system<Eigen::Vector3d, double, rotational_velocity_verlet_half,
     afm_step_handler_t, binary_functors_t, unary_functors_t>;
 
-int main() {
+int main(int argc, char ** argv) {
+    feenableexcept(FE_INVALID | FE_OVERFLOW | FE_DIVBYZERO);
+
+    if (argc < 7) {
+        std::cerr << "Not enough arguments provided\n" <<
+            "Required args (6): face number to use as anchor plane, tip point, bond to break, aggregate file path, dump directory, data file path\n";
+        return EXIT_FAILURE;
+    }
+
+    // Parse the CL args
+    size_t face_num = std::stoul(argv[1]);
+    size_t tip_point = std::stoul(argv[2]);
+    size_t bond_to_break = std::stoul(argv[3]);
+    const std::string aggregate_file_path = argv[4];
+    const std::string dump_dir = argv[5];
+    const std::string data_file = argv[6];
+
     // General simulation parameters
     const double dt = 1e-14;
-    const double t_tot = 3.0e-7;
+    const double t_tot = 1.5e-6;
     const auto n_steps = size_t(t_tot / dt);
     const size_t n_dumps = 300;
     const size_t dump_period = n_steps / n_dumps;
@@ -52,7 +70,7 @@ int main() {
     const double inertia = 2.0 / 5.0 * mass * pow(r_part, 2.0);
 
     // Parameters for the non-bonded contact model
-    const double k = 10000.0;
+    const double k = 10'000.0;
     const double gamma_n = 5.0e-9;
     const double mu = 1.0;
     const double phi = 1.0;
@@ -62,8 +80,8 @@ int main() {
     const double gamma_o = 0.05 * gamma_n;
 
     // Parameters for the bonded contact model
-    const double k_bond = 1000.0;
-    const double gamma_n_bond = 1.25e-8;
+    const double k_bond = 10'000.0;
+    const double gamma_n_bond = 2.0*sqrt(2.0*mass*k_bond);
     const double gamma_t_bond = 0.2 * gamma_n;
     const double gamma_r_bond = 0.05 * gamma_n;
     const double gamma_o_bond = 0.05 * gamma_n;
@@ -74,7 +92,7 @@ int main() {
     const double h0 = 1.0e-9;
 
     // Load the aggregate from file
-    auto x0 = load_mackowski_aggregate("../aggregates/size_50/aggregate_1.txt");
+    auto x0 = load_mackowski_aggregate(aggregate_file_path);
     std::cout << "Loaded " << x0.size() << " particles from the aggregate file\n";
     // Pre-process the loaded aggregate by removing overlap
     remove_mackowski_overlap(x0, 100, 0.01, 1.0);
@@ -84,9 +102,8 @@ int main() {
     }
 
     // Pick points that will be anchored to the substrate
-    auto anchor_points = find_anchor_plane_points(x0, 0);
+    auto anchor_points = find_anchor_plane_points(x0, face_num);
     // Pick the tip point
-    size_t tip_point = 45;
     // Solve for the contact plane normal
     Eigen::Matrix3d mat;
     mat.row(0) = x0[std::get<0>(anchor_points)];
@@ -119,7 +136,7 @@ int main() {
     v0[tip_point] = normal * 0.1;
 
     // Initialize the force buffer
-    std::vector<double> force_buffer(n_thermo_dumps);
+    std::vector<double> force_buffer(n_thermo_dumps+1);
     std::fill(force_buffer.begin(), force_buffer.end(), 0.0);
 
     rotational_step_handler<std::vector<Eigen::Vector3d>, Eigen::Vector3d> base_step_handler;
@@ -144,33 +161,90 @@ int main() {
          v0, theta0, omega0, 0.0, Eigen::Vector3d::Zero(), 0.0,
             step_handler, binary_forces, unary_forces);
 
+    // Buffers for thermo data
+    std::vector<double> t_span, ke_trs_span, ke_rot_span, ke_tot_span, lm_span, am_span, lm_span_norm, am_span_norm;
+
+    // Break a bond
+    size_t bond_counter = 0;
+    for (size_t i = 0; i < x0.size() - 1; i ++) {
+        for (size_t j = i + 1; j < x0.size(); j ++) {
+            if (sinter_model.bonded_contacts[x0.size() * i + j]) {
+                // This is a bonded contact
+                if (bond_counter == bond_to_break) {
+                    sinter_model.bonded_contacts[x0.size() * i + j] = false;
+                    sinter_model.bonded_contacts[x0.size() * j + i] = false;
+                }
+                bond_counter ++;
+            }
+        }
+    }
+
     for (size_t n = 0; n < n_steps; n ++) {
         if (n % dump_period == 0) {
             std::cout << "Dump #" << n / dump_period << std::endl;
-            write_particles("run", system.get_x(), system.get_theta(), r_part);
-            write_boundary_particles("run", system.get_x(), r_part, anchor_points, tip_point);
-            write_necks("run", system.get_x(), r_part, sinter_model.bonded_contacts);
-
-            if (n == 2 * dump_period) {
-                // Break a bond
-//                size_t bond_number = 35; // This is a looped branch
-                size_t bond_number = 27;
-                size_t bond_counter = 0;
-                for (size_t i = 0; i < x0.size() - 1; i ++) {
-                    for (size_t j = i + 1; j < x0.size(); j ++) {
-                        if (sinter_model.bonded_contacts[x0.size() * i + j]) {
-                            // This is a bonded contact
-                            if (bond_counter == bond_number) {
-                                sinter_model.bonded_contacts[x0.size() * i + j] = false;
-                                sinter_model.bonded_contacts[x0.size() * j + i] = false;
-                            }
-                            bond_counter ++;
-                        }
-                    }
-                }
-            }
+            write_particles(dump_dir, system.get_x(), system.get_theta(), r_part);
+            write_boundary_particles(dump_dir, system.get_x(), r_part, anchor_points, tip_point);
+            write_necks(dump_dir, system.get_x(), r_part, sinter_model.bonded_contacts);
+        }
+        if (n % thermo_dump_period == 0) {
+            auto ke_trs = compute_translational_kinetic_energy(system.get_v(), mass);
+            auto ke_rot = compute_rotational_kinetic_energy(system.get_omega(), inertia);
+            auto ke_tot = ke_trs + ke_rot;
+            auto lm = compute_linear_momentum(system.get_v(), mass);
+            auto am = compute_angular_momentum(system.get_x(), system.get_v(), mass, system.get_omega(), inertia);
+            t_span.emplace_back(double(n) * dt);
+            ke_trs_span.emplace_back(ke_trs);
+            ke_rot_span.emplace_back(ke_rot);
+            ke_tot_span.emplace_back(ke_tot);
+            lm_span.emplace_back(lm);
+            am_span.emplace_back(am);
         }
         system.do_step(dt);
+    }
+
+    // Output stream for data
+    std::ofstream ofs(data_file);
+
+    if (!ofs.good()) {
+        std::cerr << "Unable to create a data file" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    double ke_trs_max = *std::max_element(ke_trs_span.begin(), ke_trs_span.end());
+    double ke_rot_max = *std::max_element(ke_rot_span.begin(), ke_rot_span.end());
+    double ke_tot_max = *std::max_element(ke_tot_span.begin(), ke_tot_span.end());
+    double lm_max = *std::max_element(lm_span.begin(), lm_span.end());
+    double am_max = *std::max_element(am_span.begin(), am_span.end());
+
+    lm_span_norm.resize(lm_span.size());
+    am_span_norm.resize(am_span.size());
+
+    // Normalize the buffers
+    std::transform(ke_trs_span.begin(), ke_trs_span.end(), ke_trs_span.begin(), [ke_tot_max] (auto ke) {
+        return ke / ke_tot_max;
+    });
+    std::transform(ke_rot_span.begin(), ke_rot_span.end(), ke_rot_span.begin(), [ke_tot_max] (auto ke) {
+        return ke / ke_tot_max;
+    });
+    std::transform(lm_span.begin(), lm_span.end(), lm_span_norm.begin(), [lm_max] (auto lm) {
+        return lm / lm_max;
+    });
+    std::transform(am_span.begin(), am_span.end(), am_span_norm.begin(), [am_max] (auto am) {
+        return am / am_max;
+    });
+
+    // Write the data
+    ofs << "t\tE_trs\tE_rot\tE_tot\tP\tL\tPnorm\tLnorm\tf\n";
+    for (size_t i = 0; i < ke_trs_span.size(); i ++) {
+        ofs << t_span[i] << "\t"
+            << ke_trs_span[i] << "\t"
+            << ke_rot_span[i] << "\t"
+            << ke_tot_span[i] << "\t"
+            << lm_span[i] << "\t"
+            << am_span[i] << "\t"
+            << lm_span_norm[i] << "\t"
+            << am_span_norm[i] << "\t"
+            << force_buffer[i] << "\n";
     }
 
     return 0;

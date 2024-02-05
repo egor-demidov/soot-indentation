@@ -47,13 +47,6 @@ struct afm_step_handler {
                      typename field_container_t::const_iterator omega_begin_itr [[maybe_unused]],           // iterator pointing to the start of the omega buffer
                      typename field_container_t::const_iterator alpha_begin_itr [[maybe_unused]]) {   // iterator pointing to the start of the alpha buffer
 
-        // If this is the tip, store the force acting on it
-        if (counter % dump_period == 0 && n == tip_point) {
-            *tip_force_buffer = (*(a_begin_itr + n)).norm() * mass;
-            tip_force_buffer ++;  // Increment the iterator
-        }
-        counter ++;
-
         base_step_handler.increment_x(n, dx, x_begin_itr, v_begin_itr, a_begin_itr, theta_begin_itr, omega_begin_itr, alpha_begin_itr);
     }
 
@@ -66,6 +59,15 @@ struct afm_step_handler {
                      typename field_container_t::const_iterator theta_begin_itr [[maybe_unused]],           // iterator pointing to the start of the theta buffer
                      typename field_container_t::const_iterator omega_begin_itr [[maybe_unused]],           // iterator pointing to the start of the omega buffer
                      typename field_container_t::const_iterator alpha_begin_itr [[maybe_unused]]) {   // iterator pointing to the start of the alpha buffer
+
+        // If this is the tip, store the force acting on it
+        if (n == tip_point) {
+            if (counter % dump_period == 0) {
+                *tip_force_buffer = (*(a_begin_itr + n)).norm() * mass;
+                tip_force_buffer ++;  // Increment the iterator
+            }
+            counter ++;
+        }
 
         if (!fixed_particles[n])
             base_step_handler.increment_v(n, dv, x_begin_itr, v_begin_itr, a_begin_itr, theta_begin_itr, omega_begin_itr, alpha_begin_itr);
