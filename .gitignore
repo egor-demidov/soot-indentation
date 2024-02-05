@@ -6,6 +6,7 @@
 !energy/**
 !plots
 !plots/verification/*.plt
+!plots/production/*.plt
 !verification
 !verification/**
 !production
