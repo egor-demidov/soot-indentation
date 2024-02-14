@@ -49,6 +49,10 @@ target_link_libraries(10_sintering ${SHARED_OBJECTS})
 
 add_executable(01_afm_aggregate production/01_afm_aggregate.cpp ${UTILITY_SOURCES})
 add_executable(02_spiral production/02_spiral.cpp ${UTILITY_SOURCES})
+add_executable(03_hooks production/03_hooks.cpp ${UTILITY_SOURCES})
 
 target_link_libraries(01_afm_aggregate ${SHARED_OBJECTS})
 target_link_libraries(02_spiral ${SHARED_OBJECTS})
+target_link_libraries(03_hooks ${SHARED_OBJECTS})
+
+#add_executable(oscillator_test test/oscillator.cpp)

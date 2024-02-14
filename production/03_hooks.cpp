@@ -1,5 +1,5 @@
 //
-// Created by egor on 2/3/24.
+// Created by egor on 2/5/24.
 //
 
 #include <vector>
@@ -35,28 +35,19 @@ using binary_functors_t = binary_force_functor_container<Eigen::Vector3d, double
 using unary_functors_t = unary_force_functor_container<Eigen::Vector3d, double>;
 // Assemble the granular system representation
 using granular_system_t = granular_system<Eigen::Vector3d, double, rotational_velocity_verlet_half,
-    afm_step_handler_t, binary_functors_t, unary_functors_t>;
+        afm_step_handler_t, binary_functors_t, unary_functors_t>;
 
-int main(int argc, char ** argv) {
+int main() {
     feenableexcept(FE_INVALID | FE_OVERFLOW | FE_DIVBYZERO);
 
-    if (argc < 7) {
-        std::cerr << "Not enough arguments provided\n" <<
-            "Required args (6): face number to use as anchor plane, tip point, bond to break, aggregate file path, dump directory, data file path\n";
-        return EXIT_FAILURE;
-    }
-
     // Parse the CL args
-    size_t face_num = std::stoul(argv[1]);
-    size_t tip_point = std::stoul(argv[2]);
-    size_t bond_to_break = std::stoul(argv[3]);
-    const std::string aggregate_file_path = argv[4];
-    const std::string dump_dir = argv[5];
-    const std::string data_file = argv[6];
+    size_t bond_to_break = 100;
+    const std::string dump_dir = "run";
+    const std::string data_file = "../plots/production/03_hooks.dat";
 
     // General simulation parameters
     const double dt = 1e-14;
-    const double t_tot = 1.5e-6;
+    const double t_tot = 3.0e-6;
     const auto n_steps = size_t(t_tot / dt);
     const size_t n_dumps = 300;
     const size_t dump_period = n_steps / n_dumps;
@@ -70,9 +61,9 @@ int main(int argc, char ** argv) {
     const double inertia = 2.0 / 5.0 * mass * pow(r_part, 2.0);
 
     // Parameters for the non-bonded contact model
-    const double k = 10'000.0;
+    const double k = 100'000.0;
     const double gamma_n = 5.0e-9;
-    const double mu = 1.0;
+    const double mu = 0.1;
     const double phi = 1.0;
     const double mu_o = 0.1;
     const double gamma_t = 0.2 * gamma_n;
@@ -80,51 +71,47 @@ int main(int argc, char ** argv) {
     const double gamma_o = 0.05 * gamma_n;
 
     // Parameters for the bonded contact model
-    const double k_bond = 10'000.0;
+    const double k_bond = 100'000.0;
     const double gamma_n_bond = 2.0*sqrt(2.0*mass*k_bond);
     const double gamma_t_bond = 0.2 * gamma_n_bond;
     const double gamma_r_bond = 0.05 * gamma_n_bond;
     const double gamma_o_bond = 0.05 * gamma_n_bond;
     const double d_crit = 1.0e-9;
 
+    // Parameters for the AFM transfer function
+    const double v_afm_simulation = 0.1; // m/s
+    const double v_afm_real = 1.0e-6; // m/s
+    const double nu_afm_real = 70.0e3; // Hz
+    const double omega0_afm_real = 2.0 * M_PI * nu_afm_real; // rad/s
+    const double omega0_afm_simulation = omega0_afm_real * v_afm_real / v_afm_simulation; // rad/s
+
     // Parameters for the Van der Waals model
     const double A = 1.0e-20;
     const double h0 = 1.0e-9;
 
-    // Load the aggregate from file
-    auto x0 = load_mackowski_aggregate(aggregate_file_path);
-    std::cout << "Loaded " << x0.size() << " particles from the aggregate file\n";
-    // Pre-process the loaded aggregate by removing overlap
-    remove_mackowski_overlap(x0, 100, 0.01, 1.0);
-    // Re-size the monomers
-    for (auto & point : x0) {
-        point *= r_part;
+    // Initialize the remaining initial conditions
+    std::vector<Eigen::Vector3d> x0, v0, theta0, omega0;
+
+    // Stationary element
+    size_t n_stages = 3;
+    for (size_t i = 0; i < n_stages; i ++) {
+        Eigen::Vector3d offset = 4.0 * r_part * double(i) * Eigen::Vector3d::UnitY();
+        x0.emplace_back(offset);
+        x0.emplace_back(offset + Eigen::Vector3d::UnitY() * 2.0 * r_part);
+        x0.emplace_back(x0.back() + 2.0 * r_part * Eigen::Vector3d::UnitX());
+        x0.emplace_back(x0.back() + 2.0 * r_part * Eigen::Vector3d::UnitX());
+        x0.emplace_back(x0.back() + 2.0 * r_part * Eigen::Vector3d{1.0/sqrt(2.0), -1.0/sqrt(2.0), 0.0});
     }
 
-    // Pick points that will be anchored to the substrate
-    auto anchor_points = find_anchor_plane_points(x0, face_num);
-    // Pick the tip point
-    // Solve for the contact plane normal
-    Eigen::Matrix3d mat;
-    mat.row(0) = x0[std::get<0>(anchor_points)];
-    mat.row(1) = x0[std::get<1>(anchor_points)];
-    mat.row(2) = x0[std::get<2>(anchor_points)];
+    // Moving element
+    x0.emplace_back(3.0*r_part*Eigen::Vector3d::UnitX() - r_part * Eigen::Vector3d::UnitZ());
+    x0.emplace_back(x0.back() + 2.0*r_part*Eigen::Vector3d::UnitZ());
+    x0.emplace_back(x0.back() + 2.0 * r_part * Eigen::Vector3d{0, 1.0/sqrt(2.0), 1.0/sqrt(2.0)});
+    size_t tip_point = x0.size() - 1;
 
-    Eigen::Vector3d c = {1, 1, 1};
-    Eigen::Vector3d normal = (mat.inverse() * c).normalized();
+    // Define the anchor points
+    std::tuple<size_t, size_t, size_t> anchor_plane = {0, n_stages * 5 - 4, n_stages * 5 - 1};
 
-    // Make sure normal is pointing inward
-    Eigen::Vector3d distance = x0[tip_point] - x0[std::get<0>(anchor_points)];
-    std::cout << "Anchor points are: " <<
-        std::get<0>(anchor_points) << " " <<
-        std::get<1>(anchor_points) << " " <<
-        std::get<2>(anchor_points) << "\n";
-
-    if (distance.dot(normal) < 0.0)
-        normal = -normal;
-
-    // Initialize the remaining initial conditions
-    std::vector<Eigen::Vector3d> v0, theta0, omega0;
     v0.resize(x0.size());
     theta0.resize(x0.size());
     omega0.resize(x0.size());
@@ -133,15 +120,17 @@ int main(int argc, char ** argv) {
     std::fill(omega0.begin(), omega0.end(), Eigen::Vector3d::Zero());
 
     // Prescribe the retraction velocity to the AFM tip
-    v0[tip_point] = normal * 0.1;
+    v0[tip_point] = Eigen::Vector3d::UnitY() * v_afm_simulation;
 
     // Initialize the force buffer
     std::vector<double> force_buffer(n_thermo_dumps+1);
     std::fill(force_buffer.begin(), force_buffer.end(), 0.0);
 
     rotational_step_handler<std::vector<Eigen::Vector3d>, Eigen::Vector3d> base_step_handler;
-    afm_step_handler_t<std::vector<Eigen::Vector3d>, Eigen::Vector3d> step_handler(anchor_points,
-               tip_point, x0.size(), thermo_dump_period, base_step_handler, mass, force_buffer.begin());
+    afm_filter_ode<double> afm_filter(std::vector<double>{0}, std::vector<double>{0}, omega0_afm_simulation*100000.0);
+    afm_step_handler_t<std::vector<Eigen::Vector3d>, Eigen::Vector3d> step_handler(anchor_plane,
+                                                                                   tip_point, x0.size(), thermo_dump_period, base_step_handler, mass, force_buffer.begin(),
+                                                                                   afm_filter, dt);
 
     non_bonded_contact_functor non_bonded_model(x0.size(),
                                                 k, gamma_n, k, gamma_t, mu, phi, k, gamma_r, mu_o, phi, k, gamma_o, mu_o, phi,
@@ -152,14 +141,14 @@ int main(int argc, char ** argv) {
                                           gamma_o_bond, r_part, mass, inertia, dt, Eigen::Vector3d::Zero(), 0.0, d_crit, non_bonded_model);
 
     vdw_functor_t hamaker_model(A, h0,
-                                      r_part, mass, Eigen::Vector3d::Zero(), 0.0);
+                                r_part, mass, Eigen::Vector3d::Zero(), 0.0);
 
     binary_functors_t binary_forces{hamaker_model, sinter_model};
     unary_functors_t unary_forces{};
 
     granular_system_t system(x0,
-         v0, theta0, omega0, 0.0, Eigen::Vector3d::Zero(), 0.0,
-            step_handler, binary_forces, unary_forces);
+                             v0, theta0, omega0, 0.0, Eigen::Vector3d::Zero(), 0.0,
+                             step_handler, binary_forces, unary_forces);
 
     // Buffers for thermo data
     std::vector<double> t_span, ke_trs_span, ke_rot_span, ke_tot_span, lm_span, am_span, lm_span_norm, am_span_norm;
@@ -183,7 +172,7 @@ int main(int argc, char ** argv) {
         if (n % dump_period == 0) {
             std::cout << "Dump #" << n / dump_period << std::endl;
             write_particles(dump_dir, system.get_x(), system.get_theta(), r_part);
-            write_boundary_particles(dump_dir, system.get_x(), r_part, anchor_points, tip_point);
+            write_boundary_particles(dump_dir, system.get_x(), r_part, anchor_plane, tip_point);
             write_necks(dump_dir, system.get_x(), r_part, sinter_model.bonded_contacts);
         }
         if (n % thermo_dump_period == 0) {

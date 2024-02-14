@@ -73,9 +73,9 @@ int main() {
     // Parameters for the bonded contact model
     const double k_bond = 10'000.0;
     const double gamma_n_bond = 2.0*sqrt(2.0*mass*k_bond);
-    const double gamma_t_bond = 0.2 * gamma_n;
-    const double gamma_r_bond = 0.05 * gamma_n;
-    const double gamma_o_bond = 0.05 * gamma_n;
+    const double gamma_t_bond = 0.2 * gamma_n_bond;
+    const double gamma_r_bond = 0.05 * gamma_n_bond;
+    const double gamma_o_bond = 0.05 * gamma_n_bond;
     const double d_crit = 1.0e-9;
 
     // Parameters for the Van der Waals model
@@ -85,10 +85,10 @@ int main() {
     // Initialize the remaining initial conditions
     std::vector<Eigen::Vector3d> x0, v0, theta0, omega0;
 
-    const size_t num_edges = 5;
+    const size_t num_edges = 3;
     const double angle = M_PI - (double(num_edges) - 2.0) * M_PI / double(num_edges);
     std::cout << "The angle is: " << angle * 180.0 / M_PI << std::endl;
-    Eigen::Vector3d dy = Eigen::Vector3d::UnitY() * 1.0 / 2.0 * r_part;
+    Eigen::Vector3d dy = Eigen::Vector3d::UnitY() * 1.05 * 2.0 / double(num_edges) * r_part;
     x0.emplace_back(Eigen::Vector3d::Zero());
     for (size_t i = 0; i < num_edges*3; i ++) {
         Eigen::Vector3d dx = sqrt(pow(2.0 * r_part, 2.0) - dy.dot(dy)) * Eigen::Vector3d::UnitX();
@@ -102,7 +102,7 @@ int main() {
     x0.emplace_back(0, 0, -2.0 * r_part);
     Eigen::Vector3d dz = -0.2 * 2.0 * r_part * Eigen::Vector3d::UnitZ();
     dy = sqrt(pow(2.0 * r_part, 2.0) - dz.dot(dz)) * Eigen::Vector3d::UnitY();
-    for (size_t i = 0; i < 6; i ++) {
+    for (size_t i = 0; i < 4; i ++) {
         x0.emplace_back(x0.back() + dz + dy);
     }
     size_t tip_point = x0.size() - 1;

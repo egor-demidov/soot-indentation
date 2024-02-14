@@ -5,7 +5,38 @@
 #ifndef SOOT_INDENTATION_AFM_STEP_HANDLER_H
 #define SOOT_INDENTATION_AFM_STEP_HANDLER_H
 
+#include <cmath>
+#include <algorithm>
+#include <iostream>
 #include <vector>
+
+#include <libtimestep/step_handler/step_handler.h>
+#include <libtimestep/integrator/integrator.h>
+#include <libtimestep/system/system.h>
+
+template <typename real_t>
+struct afm_filter_ode : public unary_system<real_t, real_t, forward_euler, step_handler, afm_filter_ode<real_t>> {
+    afm_filter_ode(std::vector<real_t> f0, std::vector<real_t> df0, real_t omega0) :
+            unary_system<real_t, real_t, forward_euler, step_handler, afm_filter_ode<real_t>>(std::move(f0),
+                    std::move(df0), 0.0, 0.0, 0.0, *this, step_handler_instance), g(0.0), omega0(omega0) {}
+
+    real_t compute_acceleration(size_t i,
+                                std::vector<real_t> const & f,
+                                std::vector<real_t> const & df,
+                                real_t t [[maybe_unused]]) {
+
+        return omega0*omega0*(g - f[i] - 2.0/omega0*df[i]);
+    }
+
+    void set_g(real_t new_g) {
+        g = new_g;
+    }
+
+private:
+    real_t g;
+    const real_t omega0;
+    step_handler<std::vector<real_t>, real_t> step_handler_instance;
+};
 
 // The user must ensure that the force buffer is sufficiently large to store all dumps
 template <typename field_container_t,
@@ -20,7 +51,11 @@ struct afm_step_handler {
                      size_t tip_point,
                      size_t n_part, size_t dump_period,
                      base_step_handler_t<field_container_t, field_value_t> base_step_handler,
-                     real_t mass, typename std::vector<real_t>::iterator tip_force_buffer) :
+                     real_t mass, typename std::vector<real_t>::iterator tip_force_buffer,
+                     afm_filter_ode<real_t> & afm_filter_ode_instance, real_t dt) :
+
+        dt(dt),
+        filter(afm_filter_ode_instance),
         tip_point(tip_point), dump_period(dump_period), mass(mass),
         base_step_handler(std::move(base_step_handler)),
         tip_force_buffer(tip_force_buffer) {
@@ -63,9 +98,11 @@ struct afm_step_handler {
         // If this is the tip, store the force acting on it
         if (n == tip_point) {
             if (counter % dump_period == 0) {
-                *tip_force_buffer = (*(a_begin_itr + n)).norm() * mass;
+                *tip_force_buffer = filter.get_x()[0];
                 tip_force_buffer ++;  // Increment the iterator
             }
+            filter.set_g((*(a_begin_itr + n)).norm() * mass);
+            filter.do_step(dt);
             counter ++;
         }
 
@@ -100,6 +137,8 @@ struct afm_step_handler {
     }
 
 private:
+    const real_t dt;
+    afm_filter_ode<real_t> & filter;
     const size_t tip_point, dump_period;
     size_t counter = 0;
     const real_t mass;
